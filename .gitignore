@@ -221,3 +221,10 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local databases (live data, locked while the API runs)
+data/*.duckdb
+data/*.duckdb.wal
+node_modules/
+dist/
+*.tsbuildinfo
