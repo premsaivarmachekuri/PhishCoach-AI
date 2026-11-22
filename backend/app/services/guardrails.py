@@ -30,6 +30,13 @@ BLOCKED_BRANDS = {
     "meta",
     "stripe",
     "salesforce",
+    "github",
+    "gitlab",
+    "atlassian",
+    "jira",
+    "workday",
+    "quickbooks",
+    "zendesk",
 }
 
 INJECTION_PATTERNS = [
@@ -99,6 +106,25 @@ def check_planted_flags(email: GeneratedEmailJSON) -> tuple[bool, list[str]]:
     return len(missing) == 0, missing
 
 
+def check_brief_rules(theme: str, notes: str = "") -> tuple[bool, str | None]:
+    """Deterministic first gate on an admin's campaign brief (before any LLM is called)."""
+    text = f"{theme} {notes}"
+    for pat in INJECTION_PATTERNS:
+        if pat.search(text):
+            return False, "The brief contains an instruction-injection or unsafe pattern."
+    lower = text.lower()
+    for brand in BLOCKED_BRANDS:
+        if re.search(rf"\b{re.escape(brand)}\b", lower):
+            return False, f"The brief names a real brand ({brand}); simulations may only use fictional organisations."
+    for host in URL_RE.findall(text):
+        if not is_reserved_host(host):
+            return False, f"The brief contains a real URL ({host}); only reserved training domains are allowed."
+    words = re.findall(r"[A-Za-z]{3,}", theme)
+    if not words or not re.search(r"[aeiouAEIOU]", " ".join(words)):
+        return False, "The brief is not meaningful text; describe the phishing scenario you want to simulate."
+    return True, None
+
+
 def check_chat_guardrails(text: str) -> tuple[bool, str | None]:
     """Input/output guardrail for practice chat."""
     for pat in INJECTION_PATTERNS:
@@ -116,5 +142,5 @@ def check_chat_guardrails(text: str) -> tuple[bool, str | None]:
 
 def sanitize_prompt_context(data: dict[str, Any]) -> dict[str, Any]:
     """Strip any unexpected keys before passing context to LLM."""
-    allowed = {"theme", "department", "role_name", "difficulty", "notes", "planted_flags"}
+    allowed = {"theme", "department", "role_name", "difficulty", "notes", "planted_flags", "intent_summary"}
     return {k: v for k, v in data.items() if k in allowed}

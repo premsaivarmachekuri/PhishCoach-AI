@@ -79,7 +79,7 @@ flowchart TD
 
 | # | Agent | Input | Output | Safeguards |
 |---|---|---|---|---|
-| ① | **Campaign** (LangGraph) | Admin brief + selected red flags from the playbook | Email JSON: sender, subject, body, link, `planted_flags` | Schema validation → deterministic rules (no real brands, reserved domains only, no forms) → second-model safety review → bounded retries → human approval before deploy |
+| ① | **Campaign** (LangGraph) | Admin brief + selected red flags from the playbook | Email JSON: sender, subject, body, link, `planted_flags` | **Brief intake gate** (rules + guard-model intent check; rejects off-topic, real-brand, real-URL, injection or unknown-team briefs with a `422` and audit entry) → Schema validation → deterministic rules (no real brands, reserved domains only, no forms) → second-model safety review → bounded retries → human approval before deploy |
 | ② | **Attacker** | Employee role and department, conversation so far | In-character phishing turns, streamed; verdict per turn (spotted / fell for it / turn cap) and a debrief | Prompt-injection patterns blocked, output filtered token by token, turn cap |
 | ③ | **Coach** | The employee's *real* action, the email, its planted flags, matching playbook rows | Short, supportive, specific feedback, streamed | Non-punitive tone, grounded in real event; falls back to a rules coach if every model is down |
 | ④ | **Risk Engine** | Event history, role | Score, band, remediation queue, next difficulty | Plain code. Weights, half-life and thresholds live in the database. No LLM decides who gets remediated. |
@@ -135,6 +135,7 @@ The role switcher changes the view and the server-side permissions together. Emp
 |---|---|
 | Model rate-limited, erroring or empty | Retry with backoff, then next model in the chain; header badge flags fallback |
 | **Every model down** | Coaching degrades to a **rules coach** built from the real event, the email's flags and playbook rows, labelled "rules coach (AI offline)" |
+| Off-topic, unsafe or unknown-team campaign brief | Rejected up front (`422`, reason shown to admin, logged in `audit_log`); nothing generated |
 | Unsafe or malformed generated email | Rule check and guard model reject it; regenerate; final attempt ships only verifiable red flags, else a clear error |
 | Prompt injection in chat | Blocked and explained; session continues |
 | Request for data outside the role | Server-side `403` |

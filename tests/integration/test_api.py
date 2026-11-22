@@ -109,6 +109,8 @@ def test_end_to_end_campaign_inbox_events_and_rbac(monkeypatch):
     }
 
     async def _fake_complete(*args, **kwargs):
+        if kwargs.get("purpose") == "campaign_intent":
+            return json.dumps({"acceptable": True, "reason": "ok", "intent_summary": "Invoice portal lure"}), "m"
         if kwargs.get("purpose") == "campaign_guardrail":
             return json.dumps({"allow": True, "reason": "safe training email"}), "openai/gpt-oss-20b"
         return json.dumps(mock_email), "openai/gpt-oss-120b"

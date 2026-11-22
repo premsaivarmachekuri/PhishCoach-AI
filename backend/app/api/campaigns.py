@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import httpx
 from app.adapters.sim_platform import HTTPSimPlatformAdapter, SimulationPlatformAdapter
-from app.agents.campaign_graph import run_campaign_generation
+from app.agents.campaign_graph import BriefRejectedError, run_campaign_generation
 from app.models.schemas import AuthUser, CampaignBrief, TemplatePatch
 from app.services import realtime
 from app.services.auth import require_admin
@@ -51,7 +51,25 @@ async def create_campaign(
     db: DBProtocol = Depends(get_db),
 ) -> dict:
     # Generation happens first: if the LLM pipeline fails, nothing is persisted and the admin sees the real error.
-    email_json, source = await run_campaign_generation(db, LLMGateway(db), brief)
+    try:
+        email_json, source = await run_campaign_generation(db, LLMGateway(db), brief)
+    except BriefRejectedError as exc:
+        db.insert(
+            "audit_log",
+            {
+                "actor": admin.anon_id,
+                "action": "campaign_brief_rejected",
+                "entity": "campaign_brief",
+                "meta": {"theme": brief.theme[:200], "department": brief.department, "reason": exc.reason},
+            },
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"Not acceptable: {exc.reason} Guardrails only allow realistic, fictional, "
+                "department-relevant phishing-awareness scenarios."
+            ),
+        ) from exc
 
     target_filter = {
         "department": brief.department,
