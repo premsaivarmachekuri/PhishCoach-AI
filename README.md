@@ -129,19 +129,29 @@ The role switcher changes the view and the server-side permissions together. Emp
 
 **Agent design.** Four agents with narrow jobs, typed outputs, validators between steps and a human gate. Deterministic code makes every decision that affects a person.
 
-**Unbreakability.** Every failure has a defined response:
+**Unbreakability.** Every failure has a defined response, and none of them ends in an employee seeing something unsafe or a manager seeing something false.
 
-| Failure | Response |
-|---|---|
-| Model rate-limited, erroring or empty | Retry with backoff, then next model in the chain; header badge flags fallback |
-| **Every model down** | Coaching degrades to a **rules coach** built from the real event, the email's flags and playbook rows, labelled "rules coach (AI offline)" |
-| Off-topic, unsafe or unknown-team campaign brief | Rejected up front (`422`, reason shown to admin, logged in `audit_log`); nothing generated |
-| Unsafe or malformed generated email | Rule check and guard model reject it; regenerate; final attempt ships only verifiable red flags, else a clear error |
-| Prompt injection in chat | Blocked and explained; session continues |
-| Request for data outside the role | Server-side `403` |
-| Event stream drops | Client reconnects with exponential backoff |
+### Failure modes: what goes wrong, what the business sees, what the system does
 
-Fallbacks exist only for the LLM. The UI never shows mock or static data.
+| # | What goes wrong | Business impact if unhandled | What the system does | What users see |
+|---|---|---|---|---|
+| 1 | The AI model is slow, rate-limited or returns nothing | Employee clicks a simulated phish and gets no coaching: the teachable moment is lost | Retries, then switches automatically to a backup model (up to three in the chain) | Coaching still arrives; a small amber badge notes a backup model is in use |
+| 2 | **Every** AI model is down | Training stops during an outage | Coaching falls back to a **rules coach** built from the employee's real action and the approved playbook. Campaign creation and attacker chat pause rather than invent content | Coaching labelled "rules coach (AI offline)"; admins get a clear "AI unavailable, retry" message |
+| 3 | A campaign brief is off-topic, unsafe or names an unknown team | Wasted effort, or a simulation that targets the wrong people | Rejected before anything is generated; the reason is shown and recorded in the audit log | Admin sees why the brief was refused |
+| 4 | The AI writes an unsafe or malformed phishing email (real brand, real domain, broken format) | Brand or legal exposure; a simulation that could be mistaken for a real attack | Automated rule check plus a second AI reviewer; regenerates; if it still fails, nothing ships. A human admin approves every campaign before it is sent | Admin sees a clear error, never a risky email |
+| 5 | An employee tries to manipulate the AI attacker in chat (prompt injection) | The simulator is hijacked into unsafe output | Blocked, explained to the user, session continues | Short "that was blocked" note; chat carries on |
+| 6 | Someone requests data outside their role (employee asks for admin or HR views, HR asks for individuals) | Privacy breach; loss of employee trust | Enforced on the server for every request, not just hidden in the UI | "Access denied" (403) |
+| 7 | Small teams in HR reports could reveal who clicked | Employees feel singled out; punitive use of data | HR sees anonymised department aggregates only, with small groups suppressed | Suppressed figures instead of tiny counts |
+| 8 | HR or simulation platform is unreachable | Stale or missing user and event data | Error is shown as a distinct state; existing data is left untouched; no made-up figures | "Source unavailable" instead of fake numbers |
+| 9 | Live dashboard connection drops | Managers look at outdated numbers without knowing | Client reconnects automatically with increasing delay | Dashboard refreshes itself once reconnected |
+| 10 | Training does not actually reduce risk | Spend with no outcome | A control group receives standard text, so the Impact tab compares like with like and reports the difference honestly | Click, report and time-to-report rates per group, flagged as indicative on small cohorts |
+
+**Design rules behind the table**
+- Fallbacks exist only for the AI. Business data is never replaced by mock or static values.
+- Every decision that affects a person (risk score, remediation) is plain code with thresholds in config, not an AI judgement.
+- A human approves campaigns; nothing is sent automatically.
+
+**Known limits (stated up front):** the pilot cohort is small and synthetic, so effect sizes are directional; during a full AI outage, new campaigns and attacker chat cannot run, only coaching continues; the role switcher is demo-only and must be replaced by SSO in production.
 
 **Demo and clarity.** Switch roles in one click. Each role opens with its goal and a three-step journey. Dashboards update live.
 
